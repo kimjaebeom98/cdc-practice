@@ -1,0 +1,53 @@
+# CDC + ETL Pipeline Project
+
+# Docker
+docker-data/
+postgres-data/
+mysql-data/
+kafka-data/
+.env
+.env.local
+
+# Airflow
+airflow-logs/
+logs/
+airflow.db
+airflow.cfg
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+build/
+dist/
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Database
+*.db
+*.sqlite
+*.sql
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+*.tmp
+
+# Project specific
+test-data/
+temp/
+backup/
+secrets.json
+credentials.json

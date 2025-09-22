@@ -1,0 +1,5 @@
+# Airflow ETL을 위한 Python 패키지들
+kafka-python==2.0.2
+psycopg2-binary==2.9.7
+apache-airflow-providers-postgres==5.6.0
+apache-airflow-providers-kafka==1.0.0

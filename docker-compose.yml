@@ -1,0 +1,318 @@
+# Docker Compose 파일 버전 (3.8이 현재 안정적인 버전)
+version: "3.8"
+
+# 서비스들 정의 (여러 컨테이너를 하나의 파일로 관리)
+services:
+  # MySQL 8.0 데이터베이스 서비스
+  mysql:
+    # 사용할 Docker 이미지 (MySQL 8.0 공식 이미지)
+    image: mysql:8.0
+
+    # 컨테이너 이름 (Docker에서 이 컨테이너를 부를 이름)
+    container_name: mysql-test
+
+    # 환경 변수들 (MySQL 설정을 위한 변수들)
+    environment:
+      # MySQL root 계정 비밀번호 (관리자 계정)
+      MYSQL_ROOT_PASSWORD: rootpassword
+
+      # 생성할 데이터베이스 이름 (우리가 사용할 DB)
+      MYSQL_DATABASE: bankdb
+
+      # 일반 사용자 계정 (root 말고 다른 계정)
+      MYSQL_USER: debezium
+
+      # 일반 사용자 비밀번호
+      MYSQL_PASSWORD: dbz
+
+    # 포트 매핑 (외부에서 접속할 수 있도록)
+    ports:
+      # "호스트포트:컨테이너포트" 형식
+      # 외부에서는 3307로 접속, 컨테이너 내부는 3306
+      - "3307:3306"
+
+    # 볼륨 매핑 (데이터를 영구 저장하기 위해)
+    volumes:
+      # mysql_data: MySQL 데이터를 저장할 영구 저장소
+      - mysql_data:/var/lib/mysql
+
+      # ./mysql-init: 초기화 스크립트 폴더를 컨테이너에 연결
+      # MySQL 시작 시 이 폴더의 .sql 파일들을 자동 실행
+      - ./mysql-init:/docker-entrypoint-initdb.d
+
+    # MySQL 시작 시 추가 옵션들 (CDC를 위한 설정)
+    command: --server-id=1 --log-bin=mysql-bin --binlog-format=ROW --gtid-mode=ON --enforce-gtid-consistency=ON
+
+    # 네트워크 설정 (다른 컨테이너들과 통신하기 위해)
+    networks:
+      - debezium-network
+
+  # Zookeeper 서비스 (Kafka의 관리자)
+  zookeeper:
+    # 사용할 Docker 이미지 (Confluent의 Zookeeper 이미지)
+    image: confluentinc/cp-zookeeper:7.4.0
+
+    # 컨테이너 이름
+    container_name: zookeeper
+
+    # 환경 변수들 (Zookeeper 설정)
+    environment:
+      # Zookeeper 클라이언트 포트 (외부에서 접속할 포트)
+      ZOOKEEPER_CLIENT_PORT: 2181
+
+      # Zookeeper 틱 타임 (서버 상태 확인 주기)
+      ZOOKEEPER_TICK_TIME: 2000
+
+    # 네트워크 설정
+    networks:
+      - debezium-network
+
+  # Kafka Broker 서비스 (메시지 큐 서버)
+  kafka:
+    # 사용할 Docker 이미지 (Confluent의 Kafka 이미지)
+    image: confluentinc/cp-kafka:7.4.0
+
+    # 컨테이너 이름
+    container_name: kafka
+
+    # 의존성 설정 (Zookeeper가 먼저 시작되어야 함)
+    depends_on:
+      - zookeeper
+
+    # 포트 매핑 (외부에서 접속할 수 있도록)
+    ports:
+      # 외부에서는 9092로 접속, 컨테이너 내부는 9092
+      - "9092:9092"
+
+    # 환경 변수들 (Kafka 설정)
+    environment:
+      # Kafka 브로커 ID (고유 식별자)
+      KAFKA_BROKER_ID: 1
+
+      # Zookeeper 연결 정보 (위에서 만든 Zookeeper 컨테이너와 연결)
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+
+      # 외부에서 접속할 수 있는 주소 설정 (간단한 설정)
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+
+      # 오프셋 토픽 복제 인수 (단일 브로커이므로 1)
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+      # 토픽 자동 생성 활성화
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+    # 네트워크 설정
+    networks:
+      - debezium-network
+
+  # Debezium Connect 서비스 (MySQL과 Kafka를 연결하는 다리)
+  debezium-connect:
+    # 사용할 Docker 이미지 (Debezium Connect 이미지)
+    image: debezium/connect:2.3
+
+    # 컨테이너 이름
+    container_name: debezium-connect
+
+    # 의존성 설정 (Kafka와 MySQL이 먼저 시작되어야 함)
+    depends_on:
+      - kafka
+      - mysql
+
+    # 포트 매핑 (외부에서 접속할 수 있도록)
+    ports:
+      # 외부에서는 8083으로 접속, 컨테이너 내부는 8083
+      # 이 포트로 REST API를 통해 커넥터를 관리할 수 있음
+      - "8083:8083"
+
+    # 환경 변수들 (Debezium Connect 설정)
+    environment:
+      # Kafka 브로커 주소 (위에서 만든 Kafka 컨테이너와 연결)
+      BOOTSTRAP_SERVERS: kafka:9092
+      # Kafka 클러스터 ID 조회 비활성화 (개발 환경용)
+      CONNECT_KAFKA_CLUSTER_ID: "dev-cluster"
+
+      # Connect 클러스터 그룹 ID (고유 식별자)
+      GROUP_ID: 1
+
+      # 설정 저장용 토픽 이름
+      CONFIG_STORAGE_TOPIC: my_connect_configs
+
+      # 오프셋 저장용 토픽 이름
+      OFFSET_STORAGE_TOPIC: my_connect_offsets
+
+      # 상태 저장용 토픽 이름
+      STATUS_STORAGE_TOPIC: my_connect_statuses
+
+      # 설정 토픽 복제 인수 (단일 브로커이므로 1)
+      CONFIG_STORAGE_REPLICATION_FACTOR: 1
+
+      # 오프셋 토픽 복제 인수 (단일 브로커이므로 1)
+      OFFSET_STORAGE_REPLICATION_FACTOR: 1
+
+      # 상태 토픽 복제 인수 (단일 브로커이므로 1)
+      STATUS_STORAGE_REPLICATION_FACTOR: 1
+
+    # 네트워크 설정
+    networks:
+      - debezium-network
+
+  # PostgreSQL OLAP DB 서비스 (데이터 웨어하우스용)
+  postgres-dw:
+    # 사용할 Docker 이미지 (PostgreSQL 15 공식 이미지)
+    image: postgres:15
+
+    # 컨테이너 이름
+    container_name: postgres-dw
+
+    # 환경 변수들 (PostgreSQL 설정)
+    environment:
+      # PostgreSQL 사용자 계정
+      POSTGRES_USER: dwuser
+      # PostgreSQL 비밀번호
+      POSTGRES_PASSWORD: dwpassword
+      # 생성할 데이터베이스 이름 (OLAP용)
+      POSTGRES_DB: bankdw
+
+    # 포트 매핑 (외부에서 접속할 수 있도록)
+    ports:
+      # 외부에서는 5432로 접속, 컨테이너 내부는 5432
+      - "5432:5432"
+
+    # 볼륨 매핑 (데이터를 영구 저장하기 위해)
+    volumes:
+      # postgres_dw_data: PostgreSQL DW 데이터를 저장할 영구 저장소
+      - postgres_dw_data:/var/lib/postgresql/data
+      # ./postgres-dw-init: 초기화 스크립트 폴더를 컨테이너에 연결
+      - ./postgres-dw-init:/docker-entrypoint-initdb.d
+
+    # 네트워크 설정
+    networks:
+      - debezium-network
+
+  # Airflow 웹 서버 서비스
+  airflow-webserver:
+    # 사용할 Docker 이미지 (Apache Airflow 공식 이미지)
+    image: apache/airflow:2.7.3
+
+    # 컨테이너 이름
+    container_name: airflow-webserver
+
+    # 의존성 설정 (PostgreSQL이 먼저 시작되어야 함)
+    depends_on:
+      - postgres-dw
+
+    # 환경 변수들 (Airflow 설정)
+    environment:
+      # Airflow 사용자 설정
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://dwuser:dwpassword@postgres-dw:5432/bankdw
+      AIRFLOW__CORE__FERNET_KEY: ""
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth"
+      AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+      # Airflow 사용자 계정
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin
+      _AIRFLOW_WWW_USER_EMAIL: admin@example.com
+      _AIRFLOW_WWW_USER_FIRSTNAME: Admin
+      _AIRFLOW_WWW_USER_LASTNAME: User
+      _AIRFLOW_WWW_USER_ROLE: Admin
+      # Python 패키지 설치를 위한 설정
+      _PIP_ADDITIONAL_REQUIREMENTS: "kafka-python==2.0.2 psycopg2-binary==2.9.7"
+
+    # 포트 매핑 (외부에서 접속할 수 있도록)
+    ports:
+      # 외부에서는 8080으로 접속, 컨테이너 내부는 8080
+      - "8080:8080"
+
+    # 볼륨 매핑 (DAG 파일과 로그를 저장하기 위해)
+    volumes:
+      # ./airflow-dags: DAG 파일들을 저장할 폴더
+      - ./airflow-dags:/opt/airflow/dags
+      # ./airflow-logs: 로그 파일들을 저장할 폴더
+      - ./airflow-logs:/opt/airflow/logs
+      # airflow_data: Airflow 메타데이터를 저장할 영구 저장소
+      - airflow_data:/opt/airflow
+
+    # 네트워크 설정
+    networks:
+      - debezium-network
+
+    # 명령어 설정 (웹서버 실행)
+    command: webserver
+
+  # Airflow 스케줄러 서비스
+  airflow-scheduler:
+    # 사용할 Docker 이미지 (Apache Airflow 공식 이미지)
+    image: apache/airflow:2.7.3
+
+    # 컨테이너 이름
+    container_name: airflow-scheduler
+
+    # 의존성 설정 (PostgreSQL과 웹서버가 먼저 시작되어야 함)
+    depends_on:
+      - postgres-dw
+      - airflow-webserver
+
+    # 환경 변수들 (Airflow 설정)
+    environment:
+      # Airflow 사용자 설정
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://dwuser:dwpassword@postgres-dw:5432/bankdw
+      AIRFLOW__CORE__FERNET_KEY: ""
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth"
+      AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+      # Airflow 사용자 계정
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin
+      _AIRFLOW_WWW_USER_EMAIL: admin@example.com
+      _AIRFLOW_WWW_USER_FIRSTNAME: Admin
+      _AIRFLOW_WWW_USER_LASTNAME: User
+      _AIRFLOW_WWW_USER_ROLE: Admin
+      # Python 패키지 설치를 위한 설정
+      _PIP_ADDITIONAL_REQUIREMENTS: "kafka-python==2.0.2 psycopg2-binary==2.9.7"
+
+    # 볼륨 매핑 (DAG 파일과 로그를 저장하기 위해)
+    volumes:
+      # ./airflow-dags: DAG 파일들을 저장할 폴더
+      - ./airflow-dags:/opt/airflow/dags
+      # ./airflow-logs: 로그 파일들을 저장할 폴더
+      - ./airflow-logs:/opt/airflow/logs
+      # airflow_data: Airflow 메타데이터를 저장할 영구 저장소
+      - airflow_data:/opt/airflow
+
+    # 네트워크 설정
+    networks:
+      - debezium-network
+
+    # 명령어 설정 (스케줄러 실행)
+    command: scheduler
+
+# 네트워크 정의 (모든 컨테이너가 서로 통신할 수 있도록)
+networks:
+  # debezium-network라는 이름의 네트워크 생성
+  debezium-network:
+    # 브리지 드라이버 사용 (같은 호스트 내 컨테이너들 간 통신)
+    driver: bridge
+
+# 볼륨 정의 (데이터를 영구 저장하기 위한 저장소)
+volumes:
+  # mysql_data라는 이름의 볼륨 생성
+  # 이 볼륨에 MySQL 데이터가 저장되어 컨테이너를 삭제해도 데이터가 보존됨
+  mysql_data:
+
+  # postgres_dw_data라는 이름의 볼륨 생성
+  # 이 볼륨에 PostgreSQL DW 데이터가 저장되어 컨테이너를 삭제해도 데이터가 보존됨
+  postgres_dw_data:
+
+  # airflow_data라는 이름의 볼륨 생성
+  # 이 볼륨에 Airflow 메타데이터가 저장되어 컨테이너를 삭제해도 데이터가 보존됨
+  airflow_data:
