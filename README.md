@@ -25,27 +25,6 @@ MySQL OLTP → Debezium → Kafka → Airflow → PostgreSQL OLAP
 ./test-etl-pipeline.sh
 ```
 
-### 2. 간단한 ETL 실행
-
-```bash
-# 성공한 ETL DAG만 실행 (빠른 테스트용)
-./run-etl.sh
-```
-
-### 3. CDC만 테스트 (기존 방식)
-
-```bash
-# CDC 파이프라인만 테스트
-./test-cdc-safe.sh
-```
-
-### 4. 시스템 정리
-
-```bash
-# 모든 리소스 완전 정리
-./cleanup-all.sh
-```
-
 ## 📊 데이터베이스 스키마
 
 ### MySQL OLTP (bankdb)
@@ -79,11 +58,8 @@ coinOne-practice/
 ├── postgres-dw-init/               # PostgreSQL 초기화 스크립트
 │   └── 01-create-dw-schema.sql
 ├── airflow-dags/                   # Airflow DAG 파일들
-│   ├── kafka_to_postgres_etl.py   # 메인 ETL DAG
-│   └── setup_connections.py        # 연결 설정 DAG
-├── test-cdc-safe.sh               # CDC 테스트 스크립트
+│   └── simple_kafka_etl.py        # 메인 ETL DAG
 ├── test-etl-pipeline.sh           # 전체 ETL 테스트 스크립트
-├── cleanup-all.sh                 # 시스템 정리 스크립트
 └── requirements.txt                # Python 패키지 의존성
 ```
 
@@ -135,60 +111,6 @@ coinOne-practice/
 ### Airflow 모니터링
 
 - Airflow 웹 UI (http://localhost:8080)에서 DAG 실행 상태 확인
-- `kafka_to_postgres_etl` DAG가 1분마다 자동 실행됨
-- 각 Task의 로그를 통해 상세한 실행 과정 확인 가능
-
-## 🛠️ 트러블슈팅
-
-### ✅ 성공한 ETL 파이프라인
-
-**현재 작동하는 DAG**: `simple_kafka_etl`
-
-- 간단하고 안정적인 Kafka Consumer 설정
-- Consumer Group 없이 직접 메시지 처리
-- 즉시 커밋으로 트랜잭션 안정성 확보
-
-### 일반적인 문제들
-
-1. **서비스 시작 실패**
-
-   ```bash
-   # 로그 확인
-   docker-compose logs [서비스명]
-
-   # 서비스 재시작
-   docker-compose restart [서비스명]
-   ```
-
-2. **커넥터 등록 실패**
-
-   ```bash
-   # 커넥터 상태 확인
-   curl http://localhost:8083/connectors/mysql-connector/status
-
-   # 커넥터 재등록
-   curl -X DELETE http://localhost:8083/connectors/mysql-connector
-   curl -X POST -H "Content-Type: application/json" -d @mysql-connector-config-clean.json http://localhost:8083/connectors
-   ```
-
-3. **ETL 파이프라인 문제**
-   - 📖 **상세한 문제 해결 가이드**: `ETL_TROUBLESHOOTING_GUIDE.md` 참조
-   - 성공한 `simple_kafka_etl` DAG 사용 권장
-   - Airflow 웹 UI에서 Task 로그 확인: http://localhost:8080 (admin/admin)
-
-## 📈 성능 최적화
-
-- **배치 크기 조정**: Kafka Consumer의 `batch_size` 설정
-- **인덱스 최적화**: PostgreSQL 테이블의 인덱스 추가
-- **파티셔닝**: 대용량 데이터의 경우 테이블 파티셔닝 고려
-- **병렬 처리**: Airflow의 병렬 Task 실행 설정
-
-## 🔒 보안 고려사항
-
-- 프로덕션 환경에서는 강력한 비밀번호 사용
-- 네트워크 보안 그룹 설정
-- SSL/TLS 암호화 활성화
-- 정기적인 보안 업데이트
 
 ## 📚 추가 자료
 
