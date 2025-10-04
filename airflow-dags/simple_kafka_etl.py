@@ -86,6 +86,12 @@ def simple_kafka_consumer():
                     duplicate_count = cursor.fetchone()[0]
                     
                     if duplicate_count == 0:
+                        # 기존 original_registered_at 조회
+                        cursor.execute("""
+                            SELECT original_registered_at FROM bank_accounts_current WHERE original_id = %s
+                        """, (original_id,))
+                        existing_original_registered_at = cursor.fetchone()[0]
+                        
                         # 히스토리에 DELETE 기록 추가
                         cursor.execute("""
                             INSERT INTO bank_accounts_history 
@@ -94,7 +100,7 @@ def simple_kafka_consumer():
                             VALUES (%s, %s, %s, %s, NOW(), %s, %s, %s, %s)
                         """, (
                             original_id, data.get('user_id'), data.get('account'), 
-                            'DELETE', data.get('registered_at'),
+                            'DELETE', existing_original_registered_at,
                             message.offset, message.partition, message.topic
                         ))
                         
@@ -124,14 +130,19 @@ def simple_kafka_consumer():
                         
                         if existing_count > 0:
                             logging.info(f"✏️ UPDATE: {original_id}")
-                            # UPDATE 처리
+                            # UPDATE 처리 (original_registered_at은 변경하지 않음)
                             cursor.execute("""
                                 UPDATE bank_accounts_current 
-                                SET user_id = %s, account = %s, original_registered_at = %s, last_updated_at = NOW()
+                                SET user_id = %s, account = %s, last_updated_at = NOW()
                                 WHERE original_id = %s
-                            """, (data.get('user_id'), data.get('account'), data.get('registered_at'), original_id))
+                            """, (data.get('user_id'), data.get('account'), original_id))
                             
-                            # 히스토리에 UPDATE 기록
+                            # 히스토리에 UPDATE 기록 (기존 original_registered_at 유지)
+                            cursor.execute("""
+                                SELECT original_registered_at FROM bank_accounts_current WHERE original_id = %s
+                            """, (original_id,))
+                            existing_original_registered_at = cursor.fetchone()[0]
+                            
                             cursor.execute("""
                                 INSERT INTO bank_accounts_history 
                                 (original_id, user_id, account, change_type, change_timestamp, 
@@ -139,7 +150,7 @@ def simple_kafka_consumer():
                                 VALUES (%s, %s, %s, %s, NOW(), %s, %s, %s, %s)
                             """, (
                                 original_id, data.get('user_id'), data.get('account'), 
-                                'UPDATE', data.get('registered_at'),
+                                'UPDATE', existing_original_registered_at,
                                 message.offset, message.partition, message.topic
                             ))
                         else:
@@ -156,10 +167,10 @@ def simple_kafka_consumer():
                                 INSERT INTO bank_accounts_history 
                                 (original_id, user_id, account, change_type, change_timestamp, 
                                  original_registered_at, kafka_offset, kafka_partition, kafka_topic)
-                                VALUES (%s, %s, %s, %s, NOW(), %s, %s, %s, %s)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                             """, (
                                 original_id, data.get('user_id'), data.get('account'), 
-                                'INSERT', data.get('registered_at'),
+                                'INSERT', data.get('registered_at'), data.get('registered_at'),
                                 message.offset, message.partition, message.topic
                             ))
                         

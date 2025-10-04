@@ -9,10 +9,7 @@ echo ""
 
 # 0. 기존 시스템 정리
 echo "🧹 0단계: 기존 시스템 정리"
-echo "기존 커넥터 제거 중..."
-curl -X DELETE http://localhost:8083/connectors/mysql-connector 2>/dev/null || echo "커넥터가 없거나 이미 제거됨"
-
-echo "기존 서비스 중지 중..."
+echo "기존 서비스 중지 중... (볼륨 포함하여 모든 데이터 삭제)"
 docker-compose down -v 2>/dev/null || echo "서비스가 이미 중지됨"
 
 echo "잠시 대기 중..."
@@ -290,4 +287,3 @@ echo "- PostgreSQL OLAP: localhost:5432 (dwuser/dwpassword)"
 echo "- Kafka: localhost:9092"
 echo "- Debezium Connect: http://localhost:8083"
 echo ""
-echo "🔧 문제 해결 가이드: ETL_TROUBLESHOOTING_GUIDE.md 참조"

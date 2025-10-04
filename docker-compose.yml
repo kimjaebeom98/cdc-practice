@@ -25,6 +25,9 @@ services:
       # 일반 사용자 비밀번호
       MYSQL_PASSWORD: dbz
 
+      # 시간대 설정 (한국 시간)
+      TZ: Asia/Seoul
+
     # 포트 매핑 (외부에서 접속할 수 있도록)
     ports:
       # "호스트포트:컨테이너포트" 형식
@@ -173,6 +176,9 @@ services:
       POSTGRES_PASSWORD: dwpassword
       # 생성할 데이터베이스 이름 (OLAP용)
       POSTGRES_DB: bankdw
+      # 시간대 설정 (한국 시간)
+      TZ: Asia/Seoul
+      PGTZ: Asia/Seoul
 
     # 포트 매핑 (외부에서 접속할 수 있도록)
     ports:
@@ -212,6 +218,9 @@ services:
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth"
       AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+      # 시간대 설정 (한국 시간)
+      TZ: Asia/Seoul
+      AIRFLOW__CORE__DEFAULT_TIMEZONE: Asia/Seoul
       # Airflow 사용자 계정
       _AIRFLOW_DB_MIGRATE: "true"
       _AIRFLOW_WWW_USER_CREATE: "true"
@@ -268,6 +277,9 @@ services:
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth"
       AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+      # 시간대 설정 (한국 시간)
+      TZ: Asia/Seoul
+      AIRFLOW__CORE__DEFAULT_TIMEZONE: Asia/Seoul
       # Airflow 사용자 계정
       _AIRFLOW_DB_MIGRATE: "true"
       _AIRFLOW_WWW_USER_CREATE: "true"
